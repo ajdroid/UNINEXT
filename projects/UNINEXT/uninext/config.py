@@ -208,3 +208,5 @@ def add_uninext_config(cfg):
     
     cfg.FIND_UNUSED_PARAMETERS = False # find_unused_parameters
     cfg.TEST.EVAL_AFTER_TRAIN = True # eval after train
+
+    cfg.WRITE_IMG_DIR = "BDD_outputs/"

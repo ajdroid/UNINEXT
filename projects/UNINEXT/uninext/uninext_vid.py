@@ -31,6 +31,7 @@ import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"  # this disables a huggingface tokenizer warning (printed every epoch)
 from detectron2.structures import BoxMode
 import cv2
+from pathlib import Path
 from .models.tracker import IDOL_Tracker, QuasiDenseEmbedTracker
 import copy
 from collections import defaultdict
@@ -50,8 +51,9 @@ class UNINEXT_VID(nn.Module):
 
     def __init__(self, cfg):
         super().__init__()
-        self.debug_only = False
+        self.debug_only = True
         self.cfg = cfg
+        self.write_img_dir = cfg.WRITE_IMG_DIR
         self.use_amp = cfg.SOLVER.AMP.ENABLED
         self.device = torch.device(cfg.MODEL.DEVICE)
         self.mask_stride = cfg.MODEL.DDETRS.MASK_STRIDE
@@ -245,7 +247,6 @@ class UNINEXT_VID(nn.Module):
             dict[str: Tensor]:
                 mapping from a named loss to a tensor storing the loss. Used during training only.
         """
-
         # images = self.preprocess_image(batched_inputs)
         # output = self.detr(images)
         task_list = [x["task"] for x in batched_inputs]
@@ -317,8 +318,9 @@ class UNINEXT_VID(nn.Module):
                     raise ValueError("task must be detection or grounding")
                 num_classes = len(positive_map_label_to_token) # num_classes during testing
                 language_dict_features = self.forward_text(captions[0:1], device="cuda")
+
                 # initialize tracker once per sequence
-                if dataset_name == "bdd_track":
+                if dataset_name == "bdd_track" or dataset_name == "custom":
                     self.tracker = QuasiDenseEmbedTracker(
                         init_score_thr=self.init_score_thr,
                         obj_score_thr=self.obj_score_thr,
@@ -350,11 +352,26 @@ class UNINEXT_VID(nn.Module):
                     pass
                 else:
                     raise ValueError("Unsupported dataset name: %s" % dataset_name)
+                
                 # batchsize = 1 during inference
                 height = batched_inputs[0]['height']
                 width = batched_inputs[0]['width']
                 video_len = len(batched_inputs[0]["image"])
                 video_dict = {}
+
+                # make the directories where result images will be stored
+                bdd_dataset_parent_dir = Path(batched_inputs[0]["file_names"][0]).parent.name
+                self.write_dir = Path(self.write_img_dir) / bdd_dataset_parent_dir
+                (self.write_dir).mkdir(parents=True, exist_ok=True)
+                track_path = (Path(self.write_img_dir) / 'track')
+                track_path.mkdir(parents=True, exist_ok=True)
+                det_path = (Path(self.write_img_dir) / 'det')
+                det_path.mkdir(parents=True, exist_ok=True)
+                # if mots:
+                seg_path = (Path(self.write_img_dir) / 'seg')
+                seg_path.mkdir(parents=True, exist_ok=True)
+
+
                 results = defaultdict(list)
                 for frame_idx in range(video_len):
                     clip_inputs = [{'image':batched_inputs[0]['image'][frame_idx:frame_idx+1]}]
@@ -362,12 +379,13 @@ class UNINEXT_VID(nn.Module):
                     language_dict_features_cur = copy.deepcopy(language_dict_features) # Important
                     output, _ = self.detr.coco_inference(images, None, None, language_dict_features=language_dict_features_cur, task=task)
                     # video_dict will be modified frame by frame
-                    if dataset_name == "bdd_track":
+                    if dataset_name in ["bdd_track", "custom"]:
                         bdd_dataset_name = batched_inputs[0]["file_names"][frame_idx].split("/")[3]
-                        if bdd_dataset_name == "track":
-                            mots = False
-                        elif bdd_dataset_name == "seg_track_20":
+                        bdd_dataset_filepath = batched_inputs[0]["file_names"][frame_idx]
+                        if "seg_track_20" in bdd_dataset_filepath:
                             mots = True
+                        elif "track" in bdd_dataset_filepath:
+                            mots = False
                         else:
                             raise ValueError("bdd_dataset_name must be track or seg_track_20")
                         self.inference_mot(output, positive_map_label_to_token, num_classes, results, frame_idx, images.image_sizes, (height, width), mots=mots)
@@ -378,27 +396,54 @@ class UNINEXT_VID(nn.Module):
                             img_arr = ori_img[0].permute((1, 2, 0)).cpu().numpy()
                             img_arr = np.ascontiguousarray(img_arr[:, :, ::-1]).clip(0, 255)
                             img_arr_det = copy.deepcopy(img_arr)
+                            
                             bbox_results = results["bbox_results"][-1]
                             track_results = results["track_results"][-1]
+                            # for each class
                             for i in range(num_classes):
                                 track_res = track_results[i]
                                 if len(track_res) > 0:
+                                    # and each tracked obj in the class
                                     for res in track_res:
-                                        trk_id, trk_box = res[0], res[1:5]
+                                        if type(res) is dict:
+                                            trk_id = res["id"]
+                                            trk_box = res["bbox"][0:4]
+                                        else:
+                                            trk_id, trk_box = res[0], res[1:5]                                                
                                         color = COCO_CATEGORIES[int(trk_id) % len(COCO_CATEGORIES)]["color"]
+                                        # print the tracking id on the image
+                                        cv2.putText(img_arr, str(trk_id), (int(trk_box[0]), int(trk_box[1])), 
+                                                        fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=0.5, color=color, thickness=2)
                                         cv2.rectangle(img_arr, (int(trk_box[0]), int(trk_box[1])), (int(trk_box[2]), int(trk_box[3])), color=color, thickness=2)
                                 det_res = bbox_results[i]
                                 if len(det_res) > 0:
                                     for res in det_res:
                                         det_box, cls_id = res[0:4], i
-                                        color = COCO_CATEGORIES[int(cls_id) % len(COCO_CATEGORIES)]["color"]
+                                        color = COCO_CATEGORIES[int(cls_id)]["color"]
                                         cv2.rectangle(img_arr_det, (int(det_box[0]), int(det_box[1])), (int(det_box[2]), int(det_box[3])), color=color, thickness=2)
-                            mask_results = results["mask_results"][-1]
-                            if len(mask_results) > 0:
-                                for m in mask_results:
-                                    img_arr[:, :, -1] = np.clip(img_arr[:, :, -1] + 128 * m, 0, 255)
-                            cv2.imwrite("frame_track_%03d.jpg"%(frame_idx), img_arr)
-                            cv2.imwrite("frame_det_%03d.jpg"%(frame_idx), img_arr_det)
+                                                            # write output visualizations
+                            cv2.imwrite("%s/frame_track_%03d.jpg"%(track_path, frame_idx), img_arr)
+                            cv2.imwrite("%s/frame_det_%03d.jpg"%(det_path, frame_idx), img_arr_det)
+                            
+                            if mots:
+                                img_arr_seg = copy.deepcopy(img_arr)
+                                for i in range(num_classes):
+                                    track_res = track_results[i]
+                                    if len(track_res) > 0:
+                                        seg_mask_agg = np.zeros_like(img_arr_seg)
+                                        for res in track_res:
+                                            seg_mask = mask_util.decode(res["segm"])
+                                            color = COCO_CATEGORIES[i]["color"]
+                                            seg_mask_agg[seg_mask==1] = color
+                                            # colored_segmask = cv2.bitwise_and(colored_img, redImg, mask=mask)
+                                img_arr_seg = cv2.addWeighted(img_arr_seg, 0.8, seg_mask_agg, 0.2, 0)
+                                cv2.imwrite("%s/frame_seg_%03d.jpg"%(seg_path, frame_idx), img_arr_seg)
+    
+                                # mask_results = results["mask_results"][-1]
+                                # if len(mask_results) > 0:
+                                #     for m in mask_results:
+                                #         img_arr[:, :, -1] = np.clip(img_arr[:, :, -1] + 128 * m, 0, 255)
+
                     elif dataset_name in ["vis19", "vis21", "ovis"]:
                         output_h, output_w = self.inference_vis(output, positive_map_label_to_token, num_classes, video_dict, frame_idx)  # (height, width) is resized size,images. image_sizes[0] is original size
                     elif dataset_name in ["refytb-val", "rvos-refytb-val"]:
@@ -1194,7 +1239,8 @@ class UNINEXT_VID(nn.Module):
             results.append(result)
         return results
 
-    def inference_mot(self, outputs, positive_map_label_to_token, num_classes, results, i_frame, image_sizes, ori_size, mots=False):
+    def inference_mot(self, outputs, positive_map_label_to_token, num_classes, results,
+                         i_frame, image_sizes, ori_size, mots=False):
         """
         Arguments:
             box_cls (Tensor): tensor of shape (batch_size, num_queries, K).
@@ -1267,13 +1313,15 @@ class UNINEXT_VID(nn.Module):
                 if mots:
                     track_result = segtrack2result(track_bboxes, track_labels, track_masks, ids)
                     track_result = encode_track_results(track_result)
+                    track_result = segtrack2perclass(track_result, num_classes)
+                    
                 else:
                     track_result = track2result(track_bboxes, track_labels, ids, num_classes)
             else:
                 if mots:
                     track_result = defaultdict(list)
                     bbox_result = bbox2result(np.zeros((0, 5)), None, num_classes)
-                    # segm_result = [[] for _ in range(num_classes)]
+                    segm_result = [[] for _ in range(num_classes)]
                     # result = {"track_result": track_result, "bbox_result": bbox_result, "segm_result": segm_result}
                 else:
                     track_masks = np.zeros((0, ori_size[0], ori_size[1]))
@@ -1281,8 +1329,8 @@ class UNINEXT_VID(nn.Module):
                     track_result = [np.zeros((0, 6), dtype=np.float32) for i in range(num_classes)]
             # result = dict(bbox_results=bbox_result, track_results=track_result, mask_results=track_masks)
             if mots:
-                results["bbox_result"].append(bbox_result)
-                results["track_result"].append(track_result)
+                results["bbox_results"].append(bbox_result)
+                results["track_results"].append(track_result)
             else:
                 results["bbox_results"].append(bbox_result)
                 results["track_results"].append(track_result)
@@ -1693,3 +1741,21 @@ def encode_track_results(track_results):
             np.array(roi['segm'][:, :, np.newaxis], order='F',
                      dtype='uint8'))[0]  # encoded with RLE
     return track_results
+
+def segtrack2perclass(track_results, num_classes):
+    """Return segtrack in per class format for consistency with MOT results
+    Args:
+        track_results (list | tuple[list]): track results.
+            In mask scoring rcnn, mask_results is a tuple of (segm_results,
+            segm_cls_score).
+
+    Returns:
+        track_results_out (list):
+        Tracking and segmentation results w/ len(output) = num_classes
+        empty lists where no obj
+    """
+    track_results_out = [[] for _ in range(num_classes)]
+    for id, res in track_results.items():
+        res["id"] = id
+        track_results_out[res['label']].append(res)
+    return track_results_out

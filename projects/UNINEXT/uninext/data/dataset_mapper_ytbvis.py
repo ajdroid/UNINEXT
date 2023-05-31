@@ -159,7 +159,9 @@ class YTVISDatasetMapper:
                     self.ind_to_class_dict["bdd_det"] = cat2ind(BDD_DET_CATEGORIES)
                 elif dataset_name.startswith("bdd_inst"):
                     self.ind_to_class_dict["bdd_inst"] = cat2ind(BDD_INST_CATEGORIES)
-                elif dataset_name.startswith("bdd_box_track") or dataset_name.startswith("bdd_seg_track"):
+                elif dataset_name.startswith("bdd_box_track") \
+                    or dataset_name.startswith("bdd_seg_track")\
+                    or dataset_name.startswith("custom"):
                     self.ind_to_class_dict["bdd_track"] = cat2ind(BDD_TRACK_CATEGORIES)
                 elif dataset_name.startswith("refytb-val") or dataset_name.startswith("rvos"):
                     pass
@@ -206,7 +208,9 @@ class YTVISDatasetMapper:
                         prompt_test, positive_map_label_to_token = create_queries_and_maps(BDD_INST_CATEGORIES, self.tokenizer)
                         self.prompt_test_dict["bdd_inst"] = prompt_test
                         self.positive_map_label_to_token_dict["bdd_inst"] = positive_map_label_to_token
-                    elif dataset_name.startswith("bdd_box_track") or dataset_name.startswith("bdd_seg_track"):
+                    elif dataset_name.startswith("bdd_box_track") \
+                    or dataset_name.startswith("bdd_seg_track") \
+                    or dataset_name.startswith("custom"):
                         prompt_test, positive_map_label_to_token = create_queries_and_maps(BDD_TRACK_CATEGORIES, self.tokenizer)
                         self.prompt_test_dict["bdd_track"] = prompt_test
                         self.positive_map_label_to_token_dict["bdd_track"] = positive_map_label_to_token

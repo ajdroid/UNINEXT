@@ -3,7 +3,7 @@ import multiprocessing
 
 def download(url):
     os.system("wget -c %s" % url)
-    if url.endswiths(".zip"):
+    if url.endswith(".zip"):
         filename = os.path.split(url)[-1]
         os.system("unzip -qq %s" % filename)
         os.system("rm %s"%filename)

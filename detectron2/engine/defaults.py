@@ -516,7 +516,7 @@ class DefaultTrainer(TrainerBase):
         """
         model = build_model(cfg)
         logger = logging.getLogger(__name__)
-        logger.info("Model:\n{}".format(model))
+        # logger.info("Model:\n{}".format(model))
         return model
 
     @classmethod
@@ -609,7 +609,10 @@ Alternatively, you can call evaluation functions yourself (see Colab balloon tut
                 evaluator = evaluators[idx]
             else:
                 try:
-                    evaluator = cls.build_evaluator(cfg, dataset_name)
+                    if dataset_name.startswith("custom"):
+                        evaluator = cls.build_evaluator(cfg, "bdd_box_track_val")
+                    else:
+                        evaluator = cls.build_evaluator(cfg, dataset_name)
                 except NotImplementedError:
                     logger.warn(
                         "No evaluator found. Use `DefaultTrainer.test(evaluators=)`, "

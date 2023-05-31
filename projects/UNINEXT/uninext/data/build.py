@@ -91,7 +91,28 @@ def get_detection_dataset_dicts(
     if isinstance(dataset_names, str):
         dataset_names = [dataset_names]
     assert len(dataset_names)
-    dataset_dicts = [DatasetCatalog.get(dataset_name) for dataset_name in dataset_names]
+    
+    dataset_dicts=[]
+    # import pdb; pdb.set_trace()
+    # dataset_names=[""]
+    for dataset_name in dataset_names:
+        if dataset_name not in DatasetCatalog.keys() and "custom" in dataset_name:
+            # get the dataset from disk
+            # custom is a prefix to the dataset_name --
+            # dataset_name is of the form custom_/full/path/to/imagedir
+            dataset_name = dataset_name.replace('custom_', '')
+            bdd_dataset_template = DatasetCatalog.get("bdd_box_track_val")
+            # load the dataset filenames
+            from glob import glob; import os
+            file_names = sorted(glob(os.path.join(dataset_name, "*.jpg")))
+            bdd_dataset_template[0]["file_names"] = file_names
+            bdd_dataset_template[0]["length"] = len(file_names)
+            bdd_dataset_template[0]["annotations"] = [[] for _ in range(len(file_names))]
+            # import pdb; pdb.set_trace()
+            dataset_dicts += [bdd_dataset_template]
+        else:
+            dataset_dicts += [DatasetCatalog.get(dataset_name)]
+
     for dataset_name, dicts in zip(dataset_names, dataset_dicts):
         assert len(dicts), "Dataset '{}' is empty!".format(dataset_name)
 

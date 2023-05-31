@@ -1,0 +1,7 @@
+# All video-level tasks joint training (32 GPU training)
+# main setting (ViT-huge video-level joint training)
+_BASE_: "../video_joint_vit_huge.yaml" # all video tasks joint training
+DATASETS:
+  TEST: ("custom_/home/abhijatbiswas/datasets/avtfcw-videos/bdd_task_track/traffic_frames_padded/evoque_2016k_055_20170616_1455_76994_149_traffic", ) # "bdd_seg_track_val"
+INPUT:
+  MIN_SIZE_TEST: 800

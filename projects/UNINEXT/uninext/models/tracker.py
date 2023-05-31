@@ -445,7 +445,8 @@ class QuasiDenseEmbedTracker(object):
             if (ious[i, :i] > thr).any():
                 valids[i] = 0
         valids = valids == 1
-        mask_new_indices = torch.tensor(indices)[valids].tolist()
+        # mask_new_indices = torch.tensor(indices)[valids].tolist()
+        mask_new_indices = indices.clone().detach()[valids].tolist()
         indices = mask_new_indices
         bboxes = bboxes[valids, :]
         labels = labels[valids]

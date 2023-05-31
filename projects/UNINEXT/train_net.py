@@ -67,7 +67,11 @@ class Trainer(DefaultTrainer):
             output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
             os.makedirs(output_folder, exist_ok=True)
         evaluator_list = []
-        evaluator_type = MetadataCatalog.get(dataset_name).evaluator_type
+        if dataset_name.startswith("custom"):
+            evaluator_type = 'ytvis'
+        else:
+            evaluator_type = MetadataCatalog.get(dataset_name).evaluator_type
+            
         if evaluator_type == "lvis":
             evaluator_list.append(LVISEvaluator(dataset_name, cfg, True, output_folder))
         elif evaluator_type == "coco":
@@ -136,7 +140,8 @@ class Trainer(DefaultTrainer):
             dataset_name = cfg.DATASETS.TEST[0]
         if dataset_name.startswith("coco") or dataset_name.startswith("refcoco") or dataset_name.startswith("objects365_v2"):
             mapper = DetrDatasetMapperUni(cfg, is_train=False)
-        elif dataset_name.startswith('ytvis') or dataset_name.startswith('bdd') or dataset_name.startswith("refytb") or dataset_name.startswith("rvos"):
+        elif dataset_name.startswith('ytvis') or dataset_name.startswith('bdd') or dataset_name.startswith("refytb")\
+             or dataset_name.startswith("rvos") or dataset_name.startswith("custom"):
             mapper = YTVISDatasetMapper(cfg, is_train=False)
         elif dataset_name.startswith("sot"):
             mapper = SOTDatasetMapper(cfg, is_train=False)
@@ -213,6 +218,7 @@ def setup(args):
 
 def main(args):
     cfg = setup(args)
+    
     if args.eval_only:
         model = Trainer.build_model(cfg)
         DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(cfg.MODEL.WEIGHTS, resume=args.resume)

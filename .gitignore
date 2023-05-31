@@ -1,8 +1,10 @@
 # output dir
+BDD100K
+outputs
 output
 instant_test_output
 inference_test_output
-
+projects/UNINEXT/uninext/models/deformable_detr/ops/bdd100k/
 
 *.png
 *.json
