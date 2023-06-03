@@ -40,6 +40,7 @@ import time
 from detectron2.layers import ShapeSpec
 import pycocotools.mask as mask_util
 from scipy.optimize import linear_sum_assignment
+import pickle as pkl
 __all__ = ["UNINEXT_VID"]
 
 
@@ -53,7 +54,7 @@ class UNINEXT_VID(nn.Module):
         super().__init__()
         self.debug_only = True
         self.cfg = cfg
-        self.write_img_dir = cfg.WRITE_IMG_DIR
+        self.write_dir = cfg.WRITE_IMG_DIR
         self.use_amp = cfg.SOLVER.AMP.ENABLED
         self.device = torch.device(cfg.MODEL.DEVICE)
         self.mask_stride = cfg.MODEL.DDETRS.MASK_STRIDE
@@ -359,17 +360,26 @@ class UNINEXT_VID(nn.Module):
                 video_len = len(batched_inputs[0]["image"])
                 video_dict = {}
 
+                # is it MOT or MOTS 
+                bdd_dataset_filepath = batched_inputs[0]["file_names"][0]
+                if "seg_track_20" in bdd_dataset_filepath:
+                    mots = True
+                elif "track" in bdd_dataset_filepath:
+                    mots = False
+                else:
+                    raise ValueError("bdd_dataset_name must be track or seg_track_20")
+                
                 # make the directories where result images will be stored
-                bdd_dataset_parent_dir = Path(batched_inputs[0]["file_names"][0]).parent.name
-                self.write_dir = Path(self.write_img_dir) / bdd_dataset_parent_dir
-                (self.write_dir).mkdir(parents=True, exist_ok=True)
-                track_path = (Path(self.write_img_dir) / 'track')
+                bdd_dataset_parent_dir = Path(bdd_dataset_filepath).parent.name
+                self.write_vid_dir = Path(self.write_dir) / bdd_dataset_parent_dir
+                (self.write_vid_dir).mkdir(parents=True, exist_ok=True)
+                track_path = (Path(self.write_vid_dir) / 'track')
                 track_path.mkdir(parents=True, exist_ok=True)
-                det_path = (Path(self.write_img_dir) / 'det')
+                det_path = (Path(self.write_vid_dir) / 'det')
                 det_path.mkdir(parents=True, exist_ok=True)
-                # if mots:
-                seg_path = (Path(self.write_img_dir) / 'seg')
-                seg_path.mkdir(parents=True, exist_ok=True)
+                if mots:
+                    seg_path = (Path(self.write_vid_dir) / 'seg')
+                    seg_path.mkdir(parents=True, exist_ok=True)
 
 
                 results = defaultdict(list)
@@ -382,12 +392,6 @@ class UNINEXT_VID(nn.Module):
                     if dataset_name in ["bdd_track", "custom"]:
                         bdd_dataset_name = batched_inputs[0]["file_names"][frame_idx].split("/")[3]
                         bdd_dataset_filepath = batched_inputs[0]["file_names"][frame_idx]
-                        if "seg_track_20" in bdd_dataset_filepath:
-                            mots = True
-                        elif "track" in bdd_dataset_filepath:
-                            mots = False
-                        else:
-                            raise ValueError("bdd_dataset_name must be track or seg_track_20")
                         self.inference_mot(output, positive_map_label_to_token, num_classes, results, frame_idx, images.image_sizes, (height, width), mots=mots)
                         # debug
                         if self.debug_only:
@@ -422,22 +426,29 @@ class UNINEXT_VID(nn.Module):
                                         color = COCO_CATEGORIES[int(cls_id)]["color"]
                                         cv2.rectangle(img_arr_det, (int(det_box[0]), int(det_box[1])), (int(det_box[2]), int(det_box[3])), color=color, thickness=2)
                                                             # write output visualizations
-                            cv2.imwrite("%s/frame_track_%03d.jpg"%(track_path, frame_idx), img_arr)
-                            cv2.imwrite("%s/frame_det_%03d.jpg"%(det_path, frame_idx), img_arr_det)
+                            cv2.imwrite("%s/frame_%03d.jpg"%(track_path, frame_idx), img_arr)
+                            cv2.imwrite("%s/frame_%03d.jpg"%(det_path, frame_idx), img_arr_det)                            
+                            track_pickle_filename = "%s/frame_track_%03d.pkl"%(track_path, frame_idx)
+                            det_pickle_filename = "%s/frame_det_%03d.pkl"%(det_path, frame_idx)
+
+                            with open(track_pickle_filename, 'wb') as f: 
+                                pkl.dump(track_results, f)
+                            with open(det_pickle_filename, 'wb') as f: 
+                                pkl.dump(bbox_results, f)
                             
                             if mots:
                                 img_arr_seg = copy.deepcopy(img_arr)
+                                seg_mask_agg = np.zeros_like(img_arr_seg)
                                 for i in range(num_classes):
                                     track_res = track_results[i]
-                                    if len(track_res) > 0:
-                                        seg_mask_agg = np.zeros_like(img_arr_seg)
+                                    if len(track_res) > 0:                                        
                                         for res in track_res:
                                             seg_mask = mask_util.decode(res["segm"])
                                             color = COCO_CATEGORIES[i]["color"]
                                             seg_mask_agg[seg_mask==1] = color
                                             # colored_segmask = cv2.bitwise_and(colored_img, redImg, mask=mask)
                                 img_arr_seg = cv2.addWeighted(img_arr_seg, 0.8, seg_mask_agg, 0.2, 0)
-                                cv2.imwrite("%s/frame_seg_%03d.jpg"%(seg_path, frame_idx), img_arr_seg)
+                                cv2.imwrite("%s/frame_%03d.jpg"%(seg_path, frame_idx), img_arr_seg)
     
                                 # mask_results = results["mask_results"][-1]
                                 # if len(mask_results) > 0:

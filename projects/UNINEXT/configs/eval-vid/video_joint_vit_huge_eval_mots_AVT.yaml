@@ -2,6 +2,6 @@
 # main setting (ViT-huge video-level joint training)
 _BASE_: "../video_joint_vit_huge.yaml" # all video tasks joint training
 DATASETS:
-  TEST: ("custom_/home/abhijatbiswas/datasets/avtfcw-videos/bdd_task_seg_track_20/traffic_frames_padded/evoque_2016k_055_20170616_1455_76994_149_traffic", ) # "bdd_seg_track_val"
+  TEST: ("custom_/home/abhijatbiswas/datasets/avtfcw-videos/bdd_task_seg_track_20/traffic_frames_padded/volvo_2016k_092_20180302_0854_220065_2083_traffic", "custom_/home/abhijatbiswas/datasets/avtfcw-videos/bdd_task_seg_track_20/traffic_frames_padded/volvo_2016k_080_20180116_0720_155794_333_traffic", ) # "bdd_seg_track_val"
 INPUT:
   MIN_SIZE_TEST: 800
