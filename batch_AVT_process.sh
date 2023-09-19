@@ -21,7 +21,7 @@ fi
 CONFIG_FILENAME=${MODEL_NAME}"_eval_"${TASK}"_AVT-full-part"
 
 template_launch_cmd="CUDA_VISIBLE_DEVICES=* python launch.py --nn 1 --np 1 --eval-only --uni 1  \
---config-file  projects/UNINEXT/configs/eval-avt/${CONFIG_FILENAME}*.yaml \
+--config-file  projects/UNINEXT/configs/eval-avt_facecorrx8/${CONFIG_FILENAME}*.yaml \
 --resume \
 OUTPUT_DIR outputs/${MODEL_NAME} \
 MODEL.USE_IOU_BRANCH False" 
